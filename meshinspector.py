@@ -4,6 +4,7 @@ import trimesh
 from skimage.morphology import skeletonize
 from scipy.ndimage import distance_transform_edt
 from trimesh.proximity import ProximityQuery
+
 from tools import get_mesh_from_url
 
 VOXEL_SIZE = 10.0
@@ -18,6 +19,7 @@ CURVATURE_THRESHOLD = 50.0
 DESNSITY = 1.5e-6 # kg/mm3
 UNIT_PRICE = 15.0 # in GBP/kg
 
+DEFAULT_DENSITY = 1.5  # g/cm3
 
 def inspect_mesh(mesh_url: str,
                  voxel_size=VOXEL_SIZE,
@@ -149,30 +151,22 @@ def inspect_mesh(mesh_url: str,
     return {"is_printable":is_printable, "info": info}
 
 
-def get_mesh_info(mesh):
+def get_mesh_info(mesh_url: str) -> dict:
+    """
+    Get mesh information including size, volume, surface area, weight, and density.
+    """
     try:
-        dims = mesh.bounding_box.extents # in mm
-        x_dim = dims[0]
-        y_dim = dims[1]
-        z_dim = dims[2]
-        volume = mesh.volume
-        weight = volume * DESNSITY # in kg
-
-        max_dim = max(dims)
-        if max_dim < 100:
-            shipping_cost = 10
-        elif max_dim >= 100 and max_dim < 200:
-            shipping_cost = 20
-        elif max_dim >= 200 and max_dim < 300:
-            shipping_cost = 60
-        elif max_dim >= 300 and max_dim < 400:
-            shipping_cost = 150
-        else:
-            shipping_cost = 210
-        print_cost = weight * UNIT_PRICE
-        price_est = shipping_cost + print_cost
-
+        mesh = get_mesh_from_url(mesh_url)
+        bounding_box = mesh.bounding_box_oriented
+        volume = 1e-6 * mesh.volume  # in L
+        bounding_vol = 1e-6 * bounding_box.volume  # in L
+        extents = bounding_box.primitive.extents.tolist()
+        size = "x".join(f"{dim:.1f}" for dim in extents) + " mm" # bounding box dimensions, in mm
+        surface = 1e-6 * mesh.area  # in m^2
+        density = DEFAULT_DENSITY
+        weight = density * volume  # in kg, as g/cm3 = kg/L
+        return {"size": size, "bounding_vol": bounding_vol, "surface": surface, "weight": weight, "density": density}
     except Exception as e:
-        raise RuntimeError(f"Failed to get mesh info: {str(e)}")
+        raise ValueError(f"Failed to process mesh {mesh_url}: {str(e)}")
 
-    return {"x_dim": x_dim, "y_dim": y_dim, "z_dim": z_dim, "weight": weight, "estimated_price": price_est}
+
